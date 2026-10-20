@@ -1,0 +1,37 @@
+name: Build wpa_cli
+
+on:
+workflow_dispatch:
+
+jobs:
+build:
+runs-on: ubuntu-22.04
+steps:
+- name: Install Android NDK
+uses: android-actions/setup-android@v3
+
+  - name: Download NDK
+    run: sdkmanager "ndk;26.3.11579264"
+
+  - name: Download source
+    run: git clone --depth 1 --branch android-8.1.0_r12 https://android.googlesource.com/platform/external/wpa_supplicant_8 source
+
+  - name: Compile
+    run: |
+      set -e
+      NDK="$ANDROID_HOME/ndk/26.3.11579264"
+      CC="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/armv7a-linux-androideabi27-clang"
+      cd source/wpa_supplicant
+      mkdir -p "$GITHUB_WORKSPACE/out/module/system/bin"
+      "$CC" -O2 -fPIE -pie -DANDROID -DCONFIG_CTRL_IFACE -DCONFIG_CTRL_IFACE_UNIX -DCONFIG_ANDROID_LOG -DCONFIG_WPA_CLI_EDIT '-DCONFIG_CTRL_IFACE_CLIENT_DIR="/data/misc/wifi/sockets"' -I. -Isrc -Isrc/common -Isrc/utils wpa_cli.c src/common/wpa_ctrl.c src/utils/wpa_debug.c src/utils/common.c src/common/cli.c src/utils/os_unix.c src/utils/edit.c -llog -o "$GITHUB_WORKSPACE/out/module/system/bin/wpa_cli"
+      cd "$GITHUB_WORKSPACE/out/module"
+      printf 'id=wpa_cli_fix\nname=WPA CLI Fix\nversion=1.0\nversionCode=1\nauthor=User\ndescription=Adds wpa_cli binary\n' > module.prop
+      printf '#!/system/bin/sh\nset_perm "$MODPATH/system/bin/wpa_cli" 0 0 0755\n' > customize.sh
+      chmod 755 system/bin/wpa_cli customize.sh
+      zip -qr "$GITHUB_WORKSPACE/wpa_cli_fix.zip" .
+
+  - name: Upload ZIP
+    uses: actions/upload-artifact@v4
+    with:
+      name: wpa_cli_fix
+      path: wpa_cli_fix.zip
